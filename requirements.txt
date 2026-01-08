@@ -1,0 +1,29 @@
+# Know It Backend - Dependencies
+# Python 3.11+
+
+# Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Validation & Settings
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# HTTP Client (for external APIs)
+httpx==0.28.1
+
+# OpenAI
+openai==1.58.1
+
+# File handling
+python-multipart==0.0.19
+aiofiles==24.1.0
+
+# Utils
+python-dotenv==1.0.1
+uuid7==0.1.0

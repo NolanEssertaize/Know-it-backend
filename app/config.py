@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4"
     whisper_model: str = "whisper-1"
 
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # CORS
     cors_origins: str = "http://localhost:3000,http://localhost:8081"
 

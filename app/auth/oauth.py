@@ -186,5 +186,11 @@ class GoogleOAuth:
         raise OAuthError("Either id_token or code with redirect_uri required")
 
 
-# Singleton instance
-google_oauth = GoogleOAuth()
+def get_google_oauth() -> GoogleOAuth | None:
+    """Get GoogleOAuth instance if configured, None otherwise."""
+    if settings.google_client_id and settings.google_client_secret:
+        return GoogleOAuth()
+    logger.warning("[GoogleOAuth] Google OAuth not configured - OAuth disabled")
+    return None
+
+google_oauth = get_google_oauth()

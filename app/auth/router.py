@@ -8,6 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
 
 from app.dependencies import CurrentUser, CurrentActiveUser
 from app.auth.oauth import google_oauth
@@ -171,14 +172,18 @@ async def refresh_token(
 async def google_auth(
         request: GoogleAuthRequest,
         db: AsyncSession = Depends(get_db),
-) -> AuthResponse:
+) -> JSONResponse | AuthResponse:
     """
     Authenticate with Google OAuth2 (web flow).
 
     Exchange authorization code for user info and authenticate/register user.
     """
     logger.info("[AuthRouter] Google OAuth request (web flow)")
-
+    if google_oauth is None:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"error": "Google OAuth not configured", "code": "OAUTH_DISABLED"},
+        )
     try:
         # Get user info from Google
         oauth_info = await google_oauth.authenticate(

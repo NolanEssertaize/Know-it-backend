@@ -13,41 +13,86 @@ class KnowItException(Exception):
         super().__init__(self.message)
 
 
-class TranscriptionError(KnowItException):
-    """Raised when audio transcription fails."""
+# ═══════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION EXCEPTIONS
+# ═══════════════════════════════════════════════════════════════════════════
 
+
+class AuthenticationError(KnowItException):
+    """Raised when authentication fails."""
     pass
+
+
+class InvalidTokenError(KnowItException):
+    """Raised when a JWT token is invalid or expired."""
+    pass
+
+
+class UserAlreadyExistsError(KnowItException):
+    """Raised when trying to register with an existing email."""
+    pass
+
+
+class UserNotFoundError(KnowItException):
+    """Raised when user is not found."""
+    pass
+
 
 class OAuthError(KnowItException):
-    """Raised when OAuthentication fails."""
-
+    """Raised when OAuth authentication fails."""
     pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TRANSCRIPTION & ANALYSIS EXCEPTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TranscriptionError(KnowItException):
+    """Raised when audio transcription fails."""
+    pass
+
 
 class AnalysisError(KnowItException):
     """Raised when text analysis fails."""
-
     pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TOPIC & SESSION EXCEPTIONS
+# ═══════════════════════════════════════════════════════════════════════════
 
 
 class TopicNotFoundError(KnowItException):
     """Raised when a topic is not found."""
+    pass
 
+
+class TopicAlreadyExistsError(KnowItException):
+    """Raised when a topic with the same title already exists."""
     pass
 
 
 class SessionNotFoundError(KnowItException):
     """Raised when a session is not found."""
-
     pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXTERNAL API EXCEPTIONS
+# ═══════════════════════════════════════════════════════════════════════════
 
 
 class ExternalAPIError(KnowItException):
     """Raised when an external API call fails."""
-
     pass
 
 
-# HTTP Exceptions (for direct use in routes)
+# ═══════════════════════════════════════════════════════════════════════════
+# HTTP EXCEPTION HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
+
+
 def not_found(detail: str = "Resource not found") -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
@@ -68,5 +113,13 @@ def service_unavailable(detail: str = "Service temporarily unavailable") -> HTTP
     )
 
 
-class AuthenticationError(KnowItException):
-    pass
+def unauthorized(detail: str = "Not authenticated") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def forbidden(detail: str = "Access denied") -> HTTPException:
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)

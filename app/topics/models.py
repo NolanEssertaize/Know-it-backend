@@ -4,21 +4,23 @@ Defines the Topic table structure.
 """
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 if TYPE_CHECKING:
     from app.analysis.models import Session
+    from app.auth.models import User
 
 
 class Topic(Base):
     """
     Topic model representing a learning subject.
     Contains a title and has many sessions.
+    Belongs to a user.
     """
 
     __tablename__ = "topics"
@@ -31,6 +33,20 @@ class Topic(Base):
         nullable=False,
     )
 
+    # Foreign key to User (nullable for backward compatibility)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,  # Nullable to support existing topics without users
+        index=True,
+    )
+
+    # Relationship to user
+    user: Mapped[Optional["User"]] = relationship(
+        "User",
+        back_populates="topics",
+    )
+
     # Relationship to sessions
     sessions: Mapped[List["Session"]] = relationship(
         "Session",
@@ -40,7 +56,7 @@ class Topic(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Topic(id={self.id}, title={self.title})>"
+        return f"<Topic(id={self.id}, title={self.title}, user_id={self.user_id})>"
 
     @property
     def session_count(self) -> int:

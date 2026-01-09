@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.database import create_tables
 
+from app.auth import auth_router
 from app.transcription import transcription_router
 from app.analysis import analysis_router
 from app.topics import topics_router
@@ -61,6 +62,7 @@ app = FastAPI(
 
     ## Features
 
+    * **Authentication** - User registration, login, and Google OAuth
     * **Transcription** - Convert audio recordings to text using OpenAI Whisper
     * **Analysis** - Analyze transcribed text with GPT-4 for structured feedback
     * **Topics** - Manage learning topics and sessions
@@ -93,57 +95,42 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "An unexpected error occurred",
-            "code": "INTERNAL_ERROR",
-        },
+        content={"error": "Internal server error", "code": "INTERNAL_ERROR"},
     )
 
-
-# Include routers with API version prefix
-API_V1_PREFIX = "/api/v1"
-
-app.include_router(transcription_router, prefix=API_V1_PREFIX)
-app.include_router(analysis_router, prefix=API_V1_PREFIX)
-app.include_router(topics_router, prefix=API_V1_PREFIX)
-
-app.include_router()
 
 # Health check endpoints
 @app.get("/", tags=["Health"])
 async def root():
-    """Root endpoint - API information."""
+    """Root endpoint - API info."""
     return {
         "name": settings.app_name,
         "version": settings.app_version,
         "status": "running",
-        "docs": "/docs",
     }
 
 
 @app.get("/health", tags=["Health"])
-async def health_check():
-    """Health check endpoint for load balancers."""
+async def health():
+    """Health check endpoint."""
     return {"status": "healthy"}
 
 
-@app.get("/api/v1/health", tags=["Health"])
-async def api_health_check():
-    """API health check with version info."""
+# API v1 routes
+API_V1_PREFIX = "/api/v1"
+
+
+@app.get(f"{API_V1_PREFIX}/health", tags=["Health"])
+async def api_health():
+    """API health check with version."""
     return {
         "status": "healthy",
         "version": settings.app_version,
-        "api_version": "v1",
     }
 
 
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-        log_level="info" if settings.debug else "warning",
-    )
+# Include routers
+app.include_router(auth_router, prefix=API_V1_PREFIX)
+app.include_router(transcription_router, prefix=API_V1_PREFIX)
+app.include_router(analysis_router, prefix=API_V1_PREFIX)
+app.include_router(topics_router, prefix=API_V1_PREFIX)

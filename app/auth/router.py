@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, CurrentActiveUser
+from app.dependencies import CurrentUser, CurrentActiveUser
 from app.auth.oauth import google_oauth
 from app.auth.schemas import (
     AuthError,

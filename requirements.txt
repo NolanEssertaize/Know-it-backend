@@ -13,6 +13,7 @@ alembic==1.14.0
 # Validation & Settings
 pydantic==2.10.4
 pydantic-settings==2.7.0
+email-validator==2.2.0
 
 # HTTP Client (for external APIs)
 httpx==0.28.1
@@ -23,6 +24,12 @@ openai==1.58.1
 # File handling
 python-multipart==0.0.19
 aiofiles==24.1.0
+
+# Authentication
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+google-auth==2.36.0
 
 # Utils
 python-dotenv==1.0.1

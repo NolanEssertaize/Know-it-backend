@@ -1,5 +1,5 @@
 # KnowIt Backend - Docker Compose
-# Development environment with PostgreSQL
+# Development environment with PostgreSQL + pgAdmin
 
 services:
   # PostgreSQL Database
@@ -21,6 +21,25 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # pgAdmin - Database Administration UI
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: knowit-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@knowit.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   # FastAPI Backend
   api:
     build:
@@ -34,6 +53,7 @@ services:
       - WHISPER_MODEL=${WHISPER_MODEL:-whisper-1}
       - DEBUG=true
       - CORS_ORIGINS=http://localhost:3000,http://localhost:8081,exp://localhost:8081
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-prod}
     ports:
       - "8000:8000"
     depends_on:
@@ -47,6 +67,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  pgadmin_data:
     driver: local
 
 networks:

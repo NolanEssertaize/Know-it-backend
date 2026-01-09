@@ -107,6 +107,7 @@ app.include_router(transcription_router, prefix=API_V1_PREFIX)
 app.include_router(analysis_router, prefix=API_V1_PREFIX)
 app.include_router(topics_router, prefix=API_V1_PREFIX)
 
+app.include_router()
 
 # Health check endpoints
 @app.get("/", tags=["Health"])

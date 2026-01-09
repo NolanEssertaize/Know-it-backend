@@ -18,6 +18,10 @@ class TranscriptionError(KnowItException):
 
     pass
 
+class OAuthError(KnowItException):
+    """Raised when OAuthentication fails."""
+
+    pass
 
 class AnalysisError(KnowItException):
     """Raised when text analysis fails."""
@@ -62,3 +66,7 @@ def service_unavailable(detail: str = "Service temporarily unavailable") -> HTTP
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail
     )
+
+
+class AuthenticationError(KnowItException):
+    pass

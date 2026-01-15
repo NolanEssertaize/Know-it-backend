@@ -4,12 +4,13 @@ Analysis router - API endpoints for text analysis.
 
 import logging
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AnalysisError, ExternalAPIError, SessionNotFoundError
 from app.database import get_db
+from app.dependencies import CurrentActiveUser
 from app.analysis.schemas import (
     AnalysisRequest,
     AnalysisResponse,
@@ -32,13 +33,16 @@ router = APIRouter(prefix="/analysis", tags=["Analysis"])
     responses={
         200: {"model": AnalysisResponse, "description": "Successful analysis"},
         400: {"model": AnalysisErrorSchema, "description": "Invalid request"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "User account is deactivated or topic access denied"},
         500: {"model": AnalysisErrorSchema, "description": "Analysis failed"},
         503: {"model": AnalysisErrorSchema, "description": "External API unavailable"},
     },
 )
 async def analyze_text(
-    request: AnalysisRequest,
-    db: AsyncSession = Depends(get_db),
+        request: AnalysisRequest,
+        current_user: CurrentActiveUser,
+        db: AsyncSession = Depends(get_db),
 ) -> AnalysisResponse:
     """
     Analyze transcribed text and optionally save the session.
@@ -49,20 +53,26 @@ async def analyze_text(
     - missing: Key concepts the user forgot
 
     If topic_id is provided, the session will be saved to the database.
+    The topic must belong to the authenticated user.
+
+    Requires authentication.
 
     Args:
         request: Analysis request with text and topic title
+        current_user: Authenticated user (injected by dependency)
 
     Returns:
         AnalysisResponse with structured analysis
     """
     logger.info(
-        f"[AnalysisRouter] Received analysis request for topic: {request.topic_title}"
+        f"[AnalysisRouter] Received analysis request for topic: {request.topic_title}, user: {current_user.id}"
     )
 
     try:
         service = get_analysis_service(db)
-        result = await service.analyze_text(request)
+
+        # Pass user_id to service for ownership verification
+        result = await service.analyze_text(request, user_id=current_user.id)
 
         logger.info(
             f"[AnalysisRouter] Analysis successful"
@@ -98,36 +108,52 @@ async def analyze_text(
     response_model=SessionRead,
     status_code=status.HTTP_200_OK,
     summary="Get session by ID",
-    description="Retrieve a specific analysis session by its ID.",
+    description="Retrieve a specific analysis session by its ID. Session must belong to the authenticated user.",
     responses={
         200: {"model": SessionRead, "description": "Session found"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Access denied - session does not belong to user"},
         404: {"model": AnalysisErrorSchema, "description": "Session not found"},
     },
 )
 async def get_session(
-    session_id: str,
-    db: AsyncSession = Depends(get_db),
+        session_id: str,
+        current_user: CurrentActiveUser,
+        db: AsyncSession = Depends(get_db),
 ) -> SessionRead:
     """
     Get a specific session by ID.
 
+    The session's topic must belong to the authenticated user.
+
+    Requires authentication.
+
     Args:
         session_id: Session UUID
+        current_user: Authenticated user (injected by dependency)
 
     Returns:
         Session data with analysis results
     """
-    logger.info(f"[AnalysisRouter] Getting session: {session_id}")
+    logger.info(f"[AnalysisRouter] Getting session: {session_id}, user: {current_user.id}")
 
     try:
         service = get_analysis_service(db)
-        return await service.get_session(session_id)
+        session = await service.get_session(session_id, user_id=current_user.id)
+        return session
 
     except SessionNotFoundError as e:
         logger.warning(f"[AnalysisRouter] Session not found: {session_id}")
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content={"error": e.message, "code": "SESSION_NOT_FOUND"},
+        )
+
+    except PermissionError as e:
+        logger.warning(f"[AnalysisRouter] Access denied to session {session_id} for user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied - session does not belong to user",
         )
 
     except Exception as e:

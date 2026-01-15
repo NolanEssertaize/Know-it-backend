@@ -1,257 +1,142 @@
-# KnowIt Backend
+# KnowIt Backend - Security Updates
 
-Backend API for the KnowIt learning application. Built with FastAPI, SQLAlchemy 2.0 (async), and PostgreSQL.
+## Summary of Changes
 
-## 🏗️ Architecture
+This update implements JWT authentication and user-based access control for the KnowIt Backend API.
+
+---
+
+## ✅ Completed Tasks
+
+### 1. JWT Configuration in `config.py`
+
+Added the following JWT settings:
+
+```python
+# JWT Authentication
+jwt_secret_key: str
+jwt_algorithm: str = "HS256"
+jwt_access_expire_minutes: int = 30
+jwt_refresh_expire_days: int = 7
+```
+
+### 2. Secured Routes with `CurrentActiveUser`
+
+The following routes now require authentication:
+
+| Route | Method | File |
+|-------|--------|------|
+| `/api/v1/transcription` | POST | `app/transcription/router.py` |
+| `/api/v1/analysis` | POST | `app/analysis/router.py` |
+| `/api/v1/analysis/sessions/{id}` | GET | `app/analysis/router.py` |
+| `/api/v1/topics` | GET, POST | `app/topics/router.py` |
+| `/api/v1/topics/{id}` | GET, PATCH, DELETE | `app/topics/router.py` |
+
+### 3. User-based Filtering in Repositories
+
+#### Topics Repository (`app/topics/repository.py`)
+- `create()` - Now requires `user_id` parameter to associate topic with user
+- `get_by_id()` - Added `user_id` and `verify_ownership` parameters
+- `get_all()` - Now requires `user_id` to return only user's topics
+- `count()` - Now requires `user_id` to count only user's topics
+- `update()` - Now requires `user_id` for ownership verification
+- `delete()` - Now requires `user_id` for ownership verification
+- Added `verify_ownership()` method
+
+#### Topics Service (`app/topics/service.py`)
+- All methods now accept and pass `user_id` to the repository
+- Users can only see and modify their own topics
+
+#### Analysis Service (`app/analysis/service.py`)
+- `analyze_text()` - Verifies topic ownership before creating session
+- `get_session()` - Verifies ownership through topic relationship
+
+---
+
+## 📁 Files Modified
 
 ```
 app/
-├── main.py                 # FastAPI entry point
-├── config.py               # pydantic-settings configuration
-├── database.py             # SQLAlchemy async setup
-│
-├── core/                   # Cross-cutting concerns
-│   ├── dependencies.py     # FastAPI dependencies
-│   └── exceptions.py       # Custom exceptions
-│
-├── transcription/          # Audio → Text (Whisper)
-│   ├── router.py           # POST /api/v1/transcription
-│   ├── service.py          # Business logic
-│   └── schemas.py          # Pydantic DTOs
-│
-├── analysis/               # Text → Analysis (GPT-4)
-│   ├── router.py           # POST /api/v1/analysis
-│   ├── service.py          # Business logic
-│   ├── repository.py       # Database operations
-│   ├── schemas.py          # Pydantic DTOs
-│   └── models.py           # SQLAlchemy Session model
-│
-└── topics/                 # CRUD Topics
-    ├── router.py           # /api/v1/topics/*
-    ├── service.py          # Business logic
-    ├── repository.py       # Database operations
-    ├── schemas.py          # Pydantic DTOs
-    └── models.py           # SQLAlchemy Topic model
+├── config.py                      # Added JWT settings
+├── transcription/
+│   └── router.py                  # Added CurrentActiveUser dependency
+├── analysis/
+│   ├── router.py                  # Added CurrentActiveUser, ownership verification
+│   └── service.py                 # Added user_id verification
+└── topics/
+    ├── router.py                  # Added CurrentActiveUser to all routes
+    ├── repository.py              # Added user_id filtering
+    └── service.py                 # Added user_id pass-through
+
+.env.example                       # Added JWT environment variables
 ```
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
+## 🔧 Environment Variables
 
-- Python 3.11+
-- PostgreSQL 16+
-- OpenAI API Key
-
-### With Docker (Recommended)
-
-```bash
-# Clone the repository
-cd knowit-backend
-
-# Copy environment file
-cp .env.example .env
-
-# Edit .env and add your OPENAI_API_KEY
-nano .env
-
-# Start services
-docker-compose up -d
-
-# Check logs
-docker-compose logs -f api
-```
-
-API available at: http://localhost:8000
-
-### Without Docker
-
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with your settings
-
-# Run the server
-uvicorn app.main:app --reload
-```
-
-## 📡 API Endpoints
-
-### Health Check
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | API info |
-| GET | `/health` | Health check |
-| GET | `/api/v1/health` | API health with version |
-
-### Transcription
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/transcription` | Upload audio → get text |
-
-**Request:** `multipart/form-data`
-- `file`: Audio file (.m4a, .mp3, .wav, etc.)
-- `language` (optional): Language code (e.g., "fr")
-
-**Response:**
-```json
-{
-  "text": "Transcribed text here...",
-  "duration_seconds": 12.5,
-  "language": "fr"
-}
-```
-
-### Analysis
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/analysis` | Analyze text → structured feedback |
-| GET | `/api/v1/analysis/sessions/{id}` | Get session by ID |
-
-**Request:**
-```json
-{
-  "text": "Le polymorphisme en Java permet...",
-  "topic_title": "Polymorphisme en Java",
-  "topic_id": "uuid-optional"
-}
-```
-
-**Response:**
-```json
-{
-  "analysis": {
-    "valid": ["Point correct 1", "Point correct 2"],
-    "corrections": ["Erreur à corriger"],
-    "missing": ["Concept oublié"]
-  },
-  "session_id": "uuid-if-saved"
-}
-```
-
-### Topics
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/topics` | List all topics |
-| POST | `/api/v1/topics` | Create topic |
-| GET | `/api/v1/topics/{id}` | Get topic with sessions |
-| PATCH | `/api/v1/topics/{id}` | Update topic |
-| DELETE | `/api/v1/topics/{id}` | Delete topic |
-
-## 📖 API Documentation
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **OpenAPI JSON**: http://localhost:8000/openapi.json
-
-## 🔧 Configuration
-
-Environment variables (`.env`):
+Add these to your `.env` file:
 
 ```env
-# Application
-APP_NAME=KnowIt Backend
-APP_VERSION=0.1.0
-DEBUG=true
-
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/knowit
-
-# OpenAI
-OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-4
-WHISPER_MODEL=whisper-1
-
-# CORS
-CORS_ORIGINS=http://localhost:3000,http://localhost:8081
-
-# Server
-HOST=0.0.0.0
-PORT=8000
+# JWT Authentication
+JWT_SECRET_KEY=your-super-secret-key-change-in-production
+JWT_ALGORITHM=HS256
+JWT_ACCESS_EXPIRE_MINUTES=30
+JWT_REFRESH_EXPIRE_DAYS=7
 ```
 
-## 🧪 Development
-
-### Code Style
-
-- Python 3.11+ type hints everywhere
-- Async/await for all I/O operations
-- Pydantic v2 for validation
-- SQLAlchemy 2.0 async patterns
-
-### Project Structure Rules
-
-1. **Router** → Only HTTP handling, validation via Pydantic
-2. **Service** → Business logic, orchestrates external APIs and repositories
-3. **Repository** → Database operations only
-4. **Schemas** → Pydantic DTOs (input/output)
-5. **Models** → SQLAlchemy ORM classes
-
-### Running Tests
-
+⚠️ **Important**: Generate a secure secret key for production:
 ```bash
-# Install test dependencies
-pip install pytest pytest-asyncio httpx
-
-# Run tests
-pytest
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-## 📦 Deployment
+---
 
-### Production Dockerfile
+## 🔒 Security Features Implemented
 
-The included Dockerfile is production-ready:
-- Non-root user
-- Health checks
-- Optimized layers
+1. **Authentication Required**: All sensitive routes require a valid JWT access token
+2. **User Isolation**: Users can only access their own topics and sessions
+3. **Ownership Verification**: All CRUD operations verify that resources belong to the requesting user
+4. **Proper Error Responses**: 401 for unauthenticated, 403 for unauthorized access, 404 for not found
 
-### Environment Variables for Production
+---
 
-```env
-DEBUG=false
-DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/knowit_prod
-CORS_ORIGINS=https://your-frontend-domain.com
+## 📝 API Response Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created |
+| 204 | Deleted (no content) |
+| 400 | Bad request |
+| 401 | Not authenticated (missing or invalid token) |
+| 403 | Forbidden (resource doesn't belong to user) |
+| 404 | Not found |
+| 500 | Internal server error |
+| 503 | External API unavailable |
+
+---
+
+## 🧪 Testing
+
+To test the secured endpoints:
+
+1. Register a user via `POST /api/v1/auth/register`
+2. Login via `POST /api/v1/auth/login` to get tokens
+3. Include the access token in the `Authorization` header:
+   ```
+   Authorization: Bearer <access_token>
+   ```
+
+Example with curl:
+```bash
+# Create a topic (authenticated)
+curl -X POST http://localhost:8000/api/v1/topics \
+  -H "Authorization: Bearer <your_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Python Basics"}'
+
+# List your topics (authenticated)
+curl http://localhost:8000/api/v1/topics \
+  -H "Authorization: Bearer <your_access_token>"
 ```
-
-## 🔗 Frontend Integration
-
-The API is designed to work with the KnowIt React Native frontend:
-
-```typescript
-// Frontend LLMService integration
-const response = await fetch('http://localhost:8000/api/v1/transcription', {
-  method: 'POST',
-  body: formData, // with audio file
-});
-
-const { text } = await response.json();
-
-// Analyze transcription
-const analysisResponse = await fetch('http://localhost:8000/api/v1/analysis', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    text: text,
-    topic_title: "Polymorphisme en Java",
-    topic_id: topicId,
-  }),
-});
-
-const { analysis } = await analysisResponse.json();
-// { valid: [...], corrections: [...], missing: [...] }
-```
-
-## 📄 License
-
-MIT

@@ -53,6 +53,7 @@ services:
       - DEBUG=true
       - CORS_ORIGINS=http://localhost:3000,http://localhost:8081,exp://localhost:8081
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-prod}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     ports:
       - "8000:8000"
     depends_on:

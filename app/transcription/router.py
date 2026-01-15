@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions import TranscriptionError, ExternalAPIError
+from app.dependencies import CurrentActiveUser
 from app.transcription.schemas import TranscriptionResponse, TranscriptionError as TranscriptionErrorSchema
 from app.transcription.service import TranscriptionService, get_transcription_service
 
@@ -26,14 +27,17 @@ router = APIRouter(prefix="/transcription", tags=["Transcription"])
     responses={
         200: {"model": TranscriptionResponse, "description": "Successful transcription"},
         400: {"model": TranscriptionErrorSchema, "description": "Invalid audio file"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "User account is deactivated"},
         500: {"model": TranscriptionErrorSchema, "description": "Transcription failed"},
         503: {"model": TranscriptionErrorSchema, "description": "External API unavailable"},
     },
 )
 async def transcribe_audio(
-    file: Annotated[UploadFile, File(description="Audio file to transcribe (.m4a, .mp3, .wav, etc.)")],
-    language: Annotated[str | None, Form(description="Optional language code (e.g., 'fr', 'en')")] = None,
-    service: TranscriptionService = Depends(get_transcription_service),
+        file: Annotated[UploadFile, File(description="Audio file to transcribe (.m4a, .mp3, .wav, etc.)")],
+        current_user: CurrentActiveUser,
+        language: Annotated[str | None, Form(description="Optional language code (e.g., 'fr', 'en')")] = None,
+        service: TranscriptionService = Depends(get_transcription_service),
 ) -> TranscriptionResponse:
     """
     Transcribe an uploaded audio file to text.
@@ -41,14 +45,17 @@ async def transcribe_audio(
     Supported formats: m4a, mp3, mp4, wav, webm, ogg, flac
     Max file size: 25MB (OpenAI limit)
 
+    Requires authentication.
+
     Args:
         file: Audio file to transcribe
+        current_user: Authenticated user (injected by dependency)
         language: Optional language hint for better accuracy
 
     Returns:
         TranscriptionResponse with transcribed text
     """
-    logger.info(f"[TranscriptionRouter] Received file: {file.filename}, size: {file.size}")
+    logger.info(f"[TranscriptionRouter] Received file: {file.filename}, size: {file.size}, user: {current_user.id}")
 
     # Validate file
     if not file.filename:

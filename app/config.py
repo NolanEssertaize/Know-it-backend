@@ -32,15 +32,18 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4"
     whisper_model: str = "whisper-1"
 
-    google_client_id: str = ""
-    google_client_secret: str = ""
-
     # CORS
     cors_origins: str = "http://localhost:3000,http://localhost:8081"
 
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
+
+    # JWT Authentication
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_expire_minutes: int = 30
+    jwt_refresh_expire_days: int = 7
 
     @property
     def cors_origins_list(self) -> List[str]:

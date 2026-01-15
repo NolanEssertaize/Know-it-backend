@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
 from app.dependencies import CurrentUser, CurrentActiveUser
-from app.auth.oauth import google_oauth
 from app.auth.schemas import (
     AuthError,
     AuthResponse,
@@ -152,107 +151,6 @@ async def refresh_token(
             content={"error": str(e), "code": "INVALID_TOKEN"},
         )
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# GOOGLE OAUTH
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-@router.post(
-    "/google",
-    response_model=AuthResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Authenticate with Google (Web)",
-    description="Authenticate using Google OAuth2 authorization code (web flow).",
-    responses={
-        200: {"model": AuthResponse, "description": "Authentication successful"},
-        401: {"model": AuthError, "description": "OAuth failed"},
-    },
-)
-async def google_auth(
-        request: GoogleAuthRequest,
-        db: AsyncSession = Depends(get_db),
-) -> JSONResponse | AuthResponse:
-    """
-    Authenticate with Google OAuth2 (web flow).
-
-    Exchange authorization code for user info and authenticate/register user.
-    """
-    logger.info("[AuthRouter] Google OAuth request (web flow)")
-    if google_oauth is None:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"error": "Google OAuth not configured", "code": "OAUTH_DISABLED"},
-        )
-    try:
-        # Get user info from Google
-        oauth_info = await google_oauth.authenticate(
-            code=request.code,
-            redirect_uri=request.redirect_uri,
-        )
-
-        # Authenticate or register user
-        auth_service = get_auth_service(db)
-        return await auth_service.authenticate_oauth(oauth_info)
-
-    except OAuthError as e:
-        logger.error(f"[AuthRouter] Google OAuth failed: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": str(e), "code": "OAUTH_FAILED"},
-        )
-    except AuthenticationError as e:
-        logger.warning(f"[AuthRouter] Google auth failed: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": str(e), "code": "AUTH_FAILED"},
-        )
-
-
-@router.post(
-    "/google/token",
-    response_model=AuthResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Authenticate with Google ID Token (Mobile)",
-    description="Authenticate using Google ID token from mobile Google Sign-In.",
-    responses={
-        200: {"model": AuthResponse, "description": "Authentication successful"},
-        401: {"model": AuthError, "description": "OAuth failed"},
-    },
-)
-async def google_token_auth(
-        request: GoogleTokenRequest,
-        db: AsyncSession = Depends(get_db),
-) -> AuthResponse:
-    """
-    Authenticate with Google ID token (mobile flow).
-
-    Verify ID token from Google Sign-In and authenticate/register user.
-    """
-    logger.info("[AuthRouter] Google OAuth request (mobile flow)")
-
-    try:
-        # Verify ID token and get user info
-        oauth_info = await google_oauth.authenticate(
-            id_token_str=request.id_token,
-        )
-
-        # Authenticate or register user
-        auth_service = get_auth_service(db)
-        return await auth_service.authenticate_oauth(oauth_info)
-
-    except OAuthError as e:
-        logger.error(f"[AuthRouter] Google token auth failed: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": str(e), "code": "OAUTH_FAILED"},
-        )
-    except AuthenticationError as e:
-        logger.warning(f"[AuthRouter] Google auth failed: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": str(e), "code": "AUTH_FAILED"},
-        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

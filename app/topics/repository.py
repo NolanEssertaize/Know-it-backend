@@ -2,10 +2,13 @@
 Topics repository - Data Access Layer for topics.
 Handles all database operations for Topic entities.
 All operations filter by user_id for security.
+
+FIX: Added get_session_count() method and with_session_count parameter
+to avoid lazy-loading issues in async SQLAlchemy.
 """
 
 import logging
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Dict
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -13,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.topics.models import Topic
+from app.analysis.models import Session
 from app.topics.schemas import TopicCreate, TopicUpdate
 from app.core.exceptions import TopicNotFoundError
 
@@ -34,7 +38,7 @@ class TopicRepository:
             user_id: Owner user ID
 
         Returns:
-            Created Topic entity
+            Created Topic entity (session_count will be 0)
         """
         topic = Topic(
             id=str(uuid4()),
@@ -94,6 +98,7 @@ class TopicRepository:
             user_id: str,
             skip: int = 0,
             limit: int = 100,
+            with_sessions: bool = False,
     ) -> Sequence[Topic]:
         """
         Get all topics for a user with pagination.
@@ -102,6 +107,7 @@ class TopicRepository:
             user_id: User ID to filter by
             skip: Number of records to skip
             limit: Maximum number of records to return
+            with_sessions: Whether to eagerly load sessions
 
         Returns:
             List of Topic entities belonging to the user
@@ -113,8 +119,52 @@ class TopicRepository:
             .offset(skip)
             .limit(limit)
         )
+
+        if with_sessions:
+            stmt = stmt.options(selectinload(Topic.sessions))
+
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def get_session_counts(self, user_id: str) -> Dict[str, int]:
+        """
+        Get session counts for all topics of a user.
+
+        More efficient than loading all sessions just to count them.
+
+        Args:
+            user_id: User ID to filter by
+
+        Returns:
+            Dict mapping topic_id to session_count
+        """
+        stmt = (
+            select(Topic.id, func.count(Session.id).label("session_count"))
+            .outerjoin(Session, Session.topic_id == Topic.id)
+            .where(Topic.user_id == user_id)
+            .group_by(Topic.id)
+        )
+
+        result = await self.db.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
+
+    async def get_session_count(self, topic_id: str) -> int:
+        """
+        Get session count for a single topic.
+
+        Args:
+            topic_id: Topic UUID
+
+        Returns:
+            Number of sessions
+        """
+        stmt = (
+            select(func.count(Session.id))
+            .where(Session.topic_id == topic_id)
+        )
+
+        result = await self.db.execute(stmt)
+        return result.scalar_one()
 
     async def count(self, user_id: str) -> int:
         """
@@ -213,15 +263,13 @@ class TopicRepository:
 
         Returns:
             True if topic belongs to user
-
-        Raises:
-            TopicNotFoundError: If topic not found
         """
-        stmt = select(Topic.user_id).where(Topic.id == topic_id)
+        stmt = (
+            select(func.count())
+            .select_from(Topic)
+            .where(Topic.id == topic_id)
+            .where(Topic.user_id == user_id)
+        )
+
         result = await self.db.execute(stmt)
-        topic_user_id = result.scalar_one_or_none()
-
-        if topic_user_id is None:
-            raise TopicNotFoundError(f"Topic not found: {topic_id}")
-
-        return topic_user_id == user_id
+        return result.scalar_one() > 0

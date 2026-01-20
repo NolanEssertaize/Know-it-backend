@@ -51,7 +51,7 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4}
       - WHISPER_MODEL=${WHISPER_MODEL:-whisper-1}
       - DEBUG=true
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:8081,exp://localhost:8081
+      - CORS_ORIGINS=*
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-prod}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     ports:
@@ -73,4 +73,3 @@ volumes:
 
 networks:
   default:
-    name: knowit-network

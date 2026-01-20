@@ -1,6 +1,9 @@
 """
 SQLAlchemy models for topics module.
 Defines the Topic table structure.
+
+FIX: Removed session_count property that caused lazy-loading issues in async SQLAlchemy.
+Session count is now computed in the repository/service layer using proper async queries.
 """
 
 from datetime import datetime, timezone
@@ -48,17 +51,27 @@ class Topic(Base):
     )
 
     # Relationship to sessions
+    # NOTE: Use lazy="noload" to prevent loading by default in async context
+    # Always use selectinload() explicitly when you need sessions
     sessions: Mapped[List["Session"]] = relationship(
         "Session",
         back_populates="topic",
         cascade="all, delete-orphan",
         order_by="Session.date.desc()",
+        lazy="noload",  # Don't load by default - use selectinload() when needed
     )
 
     def __repr__(self) -> str:
         return f"<Topic(id={self.id}, title={self.title}, user_id={self.user_id})>"
 
-    @property
-    def session_count(self) -> int:
-        """Get the number of sessions for this topic."""
-        return len(self.sessions) if self.sessions else 0
+    def get_session_count(self) -> int:
+        """
+        Get session count - ONLY call when sessions are already loaded via selectinload().
+        
+        With lazy="noload", sessions will be an empty list if not explicitly loaded.
+        Use repository.get_session_count() for accurate async-safe counting.
+        """
+        # Check if sessions relationship is loaded and has data
+        if "sessions" in self.__dict__ and self.sessions is not None:
+            return len(self.sessions)
+        return 0

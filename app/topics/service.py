@@ -1,6 +1,11 @@
 """
 Topics service - Business logic for topic management.
 All operations are scoped to the authenticated user.
+
+FIX: Updated _to_read_dto to properly handle session_count without lazy loading.
+- create_topic: session_count is always 0 (new topic)
+- list_topics: uses batch query for session counts (efficient)
+- update_topic: queries session count explicitly
 """
 
 import logging
@@ -42,7 +47,8 @@ class TopicService:
         logger.info(f"[TopicService] Creating topic: {topic_data.title} for user: {user_id}")
 
         topic = await self.repository.create(topic_data, user_id=user_id)
-        return self._to_read_dto(topic)
+        # New topic always has 0 sessions
+        return self._to_read_dto(topic, session_count=0)
 
     async def get_topic(self, topic_id: str, user_id: str) -> TopicDetail:
         """
@@ -88,11 +94,18 @@ class TopicService:
         """
         logger.info(f"[TopicService] Listing topics for user: {user_id} (skip={skip}, limit={limit})")
 
+        # Get topics without loading sessions (more efficient)
         topics = await self.repository.get_all(user_id=user_id, skip=skip, limit=limit)
         total = await self.repository.count(user_id=user_id)
 
+        # Get session counts in a single efficient query
+        session_counts = await self.repository.get_session_counts(user_id=user_id)
+
         return TopicList(
-            topics=[self._to_read_dto(t) for t in topics],
+            topics=[
+                self._to_read_dto(t, session_count=session_counts.get(t.id, 0))
+                for t in topics
+            ],
             total=total,
         )
 
@@ -120,7 +133,9 @@ class TopicService:
         logger.info(f"[TopicService] Updating topic: {topic_id} for user: {user_id}")
 
         topic = await self.repository.update(topic_id, topic_data, user_id=user_id)
-        return self._to_read_dto(topic)
+        # Get session count separately
+        session_count = await self.repository.get_session_count(topic_id)
+        return self._to_read_dto(topic, session_count=session_count)
 
     async def delete_topic(self, topic_id: str, user_id: str) -> bool:
         """
@@ -167,17 +182,27 @@ class TopicService:
         """
         return await self.repository.verify_ownership(topic_id, user_id)
 
-    def _to_read_dto(self, topic: Topic) -> TopicRead:
-        """Convert Topic model to TopicRead DTO."""
+    def _to_read_dto(self, topic: Topic, session_count: int = 0) -> TopicRead:
+        """
+        Convert Topic model to TopicRead DTO.
+
+        Args:
+            topic: Topic model instance
+            session_count: Pre-computed session count (avoids lazy loading)
+        """
         return TopicRead(
             id=topic.id,
             title=topic.title,
             created_at=topic.created_at,
-            session_count=topic.session_count,
+            session_count=session_count,
         )
 
     def _to_detail_dto(self, topic: Topic) -> TopicDetail:
-        """Convert Topic model to TopicDetail DTO."""
+        """
+        Convert Topic model to TopicDetail DTO.
+
+        Note: Requires sessions to be eagerly loaded with selectinload().
+        """
         sessions = [
             SessionRead(
                 id=s.id,

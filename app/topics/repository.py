@@ -40,15 +40,20 @@ class TopicRepository:
         Returns:
             Created Topic entity (session_count will be 0)
         """
+        from datetime import datetime, timezone
+
         topic = Topic(
             id=str(uuid4()),
             title=topic_data.title,
             user_id=user_id,
+            created_at=datetime.now(timezone.utc),
         )
 
         self.db.add(topic)
         await self.db.flush()
-        await self.db.refresh(topic)
+
+        # No need to refresh - we just set all values and flush committed them
+        # Refreshing could trigger issues with lazy="raise" on relationships
 
         logger.info(f"[TopicRepository] Created topic: {topic.id} - {topic.title} for user: {user_id}")
         return topic
@@ -207,7 +212,9 @@ class TopicRepository:
             topic.title = topic_data.title
 
         await self.db.flush()
-        await self.db.refresh(topic)
+
+        # Don't refresh - the updated values are already in the object
+        # Refreshing could trigger issues with lazy="raise" on relationships
 
         logger.info(f"[TopicRepository] Updated topic: {topic.id}")
         return topic

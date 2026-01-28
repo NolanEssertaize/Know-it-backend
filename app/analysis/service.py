@@ -98,8 +98,7 @@ class AnalysisService:
                     {"role": "user", "content": request.text},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.3,
-                max_tokens=2000,
+                max_completion_tokens=2000,
             )
 
             # Parse response

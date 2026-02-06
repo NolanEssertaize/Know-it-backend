@@ -4,13 +4,14 @@ Analysis router - API endpoints for text analysis.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AnalysisError, ExternalAPIError, SessionNotFoundError
+from app.rate_limit import limiter
 from app.database import get_db
-from app.dependencies import CurrentActiveUser
+from app.dependencies import CurrentActiveUser, SessionQuotaUser
 from app.analysis.schemas import (
     AnalysisRequest,
     AnalysisResponse,
@@ -18,6 +19,7 @@ from app.analysis.schemas import (
     SessionRead,
 )
 from app.analysis.service import AnalysisService, get_analysis_service
+from app.subscriptions.service import get_subscription_service
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +37,16 @@ router = APIRouter(prefix="/analysis", tags=["Analysis"])
         400: {"model": AnalysisErrorSchema, "description": "Invalid request"},
         401: {"description": "Not authenticated"},
         403: {"description": "User account is deactivated or topic access denied"},
+        429: {"description": "Daily session limit exceeded or rate limit exceeded"},
         500: {"model": AnalysisErrorSchema, "description": "Analysis failed"},
         503: {"model": AnalysisErrorSchema, "description": "External API unavailable"},
     },
 )
+@limiter.limit("10/minute")
 async def analyze_text(
-        request: AnalysisRequest,
-        current_user: CurrentActiveUser,
+        request: Request,
+        analysis_request: AnalysisRequest,
+        current_user: SessionQuotaUser,
         db: AsyncSession = Depends(get_db),
 ) -> AnalysisResponse:
     """
@@ -65,19 +70,24 @@ async def analyze_text(
         AnalysisResponse with structured analysis
     """
     logger.info(
-        f"[AnalysisRouter] Received analysis request for topic: {request.topic_title}, user: {current_user.id}"
+        f"[AnalysisRouter] Received analysis request for topic: {analysis_request.topic_title}, user: {current_user.id}"
     )
 
     try:
         service = get_analysis_service(db)
 
         # Pass user_id to service for ownership verification
-        result = await service.analyze_text(request, user_id=current_user.id)
+        result = await service.analyze_text(analysis_request, user_id=current_user.id)
 
         logger.info(
             f"[AnalysisRouter] Analysis successful"
             + (f", session_id: {result.session_id}" if result.session_id else "")
         )
+
+        # Increment session usage after successful analysis
+        if result.session_id:
+            sub_service = get_subscription_service(db)
+            await sub_service.increment_session_usage(current_user.id)
 
         return result
 

@@ -32,6 +32,12 @@ python-jose[cryptography]==3.3.0
 bcrypt==4.2.1
 google-auth==2.36.0
 
+# JWT (Apple App Store verification)
+PyJWT[crypto]==2.9.0
+
+# Rate Limiting
+slowapi==0.1.9
+
 # Utils
 python-dotenv==1.0.1
 uuid7==0.1.0

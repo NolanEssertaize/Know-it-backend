@@ -5,13 +5,14 @@ All routes require authentication and filter by user.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DeckNotFoundError, FlashcardNotFoundError, ExternalAPIError
+from app.rate_limit import limiter
 from app.database import get_db
-from app.dependencies import CurrentActiveUser
+from app.dependencies import CurrentActiveUser, GenerationQuotaUser
 from app.flashcards.schemas import (
     BulkCreateResponse,
     DeckCreate,
@@ -31,6 +32,7 @@ from app.flashcards.schemas import (
     TimelineResponse,
 )
 from app.flashcards.service import FlashcardService, get_flashcard_service
+from app.subscriptions.service import get_subscription_service
 
 logger = logging.getLogger(__name__)
 
@@ -226,20 +228,29 @@ flashcards_router = APIRouter(prefix="/flashcards", tags=["Flashcards"])
     responses={
         200: {"model": GenerateResponse, "description": "Generated cards for preview"},
         401: {"description": "Not authenticated"},
+        429: {"description": "Daily generation limit exceeded or rate limit exceeded"},
         503: {"model": FlashcardError, "description": "AI service unavailable"},
     },
 )
+@limiter.limit("10/minute")
 async def generate_flashcards(
-    request: GenerateRequest,
-    current_user: CurrentActiveUser,
+    request: Request,
+    generate_request: GenerateRequest,
+    current_user: GenerationQuotaUser,
     db: AsyncSession = Depends(get_db),
 ) -> GenerateResponse:
     """Generate flashcards using AI. The AI determines the appropriate count based on content richness."""
-    logger.info(f"[FlashcardsRouter] Generating cards for topic: {request.topic}, user: {current_user.id}")
+    logger.info(f"[FlashcardsRouter] Generating cards for topic: {generate_request.topic}, user: {current_user.id}")
 
     try:
         service = get_flashcard_service(db)
-        return await service.generate_flashcards(request, user_id=current_user.id)
+        result = await service.generate_flashcards(generate_request, user_id=current_user.id)
+
+        # Increment generation usage after successful generation
+        sub_service = get_subscription_service(db)
+        await sub_service.increment_generation_usage(current_user.id)
+
+        return result
     except ExternalAPIError as e:
         logger.error(f"[FlashcardsRouter] AI generation failed: {e.message}")
         return JSONResponse(

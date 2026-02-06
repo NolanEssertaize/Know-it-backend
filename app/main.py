@@ -10,15 +10,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.database import create_tables
+from app.rate_limit import limiter
 
 from app.auth import auth_router
 from app.transcription import transcription_router
 from app.analysis import analysis_router
 from app.topics import topics_router
 from app.flashcards import decks_router, flashcards_router
+from app.subscriptions import subscriptions_router
 
 # Configure logging
 logging.basicConfig(
@@ -79,6 +83,10 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+# Rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -137,3 +145,4 @@ app.include_router(analysis_router, prefix=API_V1_PREFIX)
 app.include_router(topics_router, prefix=API_V1_PREFIX)
 app.include_router(decks_router, prefix=API_V1_PREFIX)
 app.include_router(flashcards_router, prefix=API_V1_PREFIX)
+app.include_router(subscriptions_router, prefix=API_V1_PREFIX)

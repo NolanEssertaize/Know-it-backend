@@ -45,6 +45,27 @@ class Settings(BaseSettings):
     jwt_access_expire_minutes: int = 30
     jwt_refresh_expire_days: int = 7
 
+    # Apple App Store
+    apple_bundle_id: str = ""
+    apple_issuer_id: str = ""
+    apple_key_id: str = ""
+    apple_private_key: str = ""
+
+    # Google Play Store
+    google_play_package_name: str = ""
+    google_service_account_json: str = ""
+
+    # Rate Limiting
+    rate_limit_default: str = "60/minute"
+    rate_limit_auth: str = "10/minute"
+    rate_limit_ai: str = "10/minute"
+
+    # Subscription product IDs
+    subscription_student_apple_id: str = "com.knowit.student"
+    subscription_unlimited_apple_id: str = "com.knowit.unlimited"
+    subscription_student_google_id: str = "com.knowit.student"
+    subscription_unlimited_google_id: str = "com.knowit.unlimited"
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string."""

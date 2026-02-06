@@ -15,6 +15,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.topics.models import Topic
     from app.flashcards.models import Deck, Flashcard
+    from app.subscriptions.models import UserSubscription
 
 
 class AuthProvider(str, Enum):
@@ -102,6 +103,14 @@ class User(Base):
         "Flashcard",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+
+    # Relationship to subscription (one-to-one)
+    subscription: Mapped[Optional["UserSubscription"]] = relationship(
+        "UserSubscription",
+        back_populates="user",
+        uselist=False,
+        lazy="noload",
     )
 
     def __repr__(self) -> str:

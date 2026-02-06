@@ -103,6 +103,16 @@ class ExternalAPIError(KnowItException):
     pass
 
 
+class ReceiptVerificationError(KnowItException):
+    """Raised when app store receipt verification fails."""
+    pass
+
+
+class UsageLimitExceededError(KnowItException):
+    """Raised when a user exceeds their plan's usage limit."""
+    pass
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # HTTP EXCEPTION HELPERS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -138,3 +148,7 @@ def unauthorized(detail: str = "Not authenticated") -> HTTPException:
 
 def forbidden(detail: str = "Access denied") -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def too_many_requests(detail: str = "Usage limit exceeded") -> HTTPException:
+    return HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail)

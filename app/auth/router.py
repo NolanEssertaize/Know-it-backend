@@ -5,10 +5,12 @@ Supports local (email/password) and Google OAuth authentication.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
+
+from app.rate_limit import limiter
 
 from app.dependencies import CurrentUser, CurrentActiveUser
 from app.auth.schemas import (
@@ -55,9 +57,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
         201: {"model": AuthResponse, "description": "User registered successfully"},
         400: {"model": AuthError, "description": "Invalid input"},
         409: {"model": AuthError, "description": "Email already registered"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("10/minute")
 async def register(
+        request: Request,
         user_data: UserCreate,
         db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
@@ -93,9 +98,12 @@ async def register(
     responses={
         200: {"model": AuthResponse, "description": "Login successful"},
         401: {"model": AuthError, "description": "Invalid credentials"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("10/minute")
 async def login(
+        request: Request,
         credentials: UserLogin,
         db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:

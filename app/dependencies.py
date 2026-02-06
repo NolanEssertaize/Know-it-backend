@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
 from app.auth.service import AuthService, get_auth_service
-from app.core.exceptions import InvalidTokenError, UserNotFoundError
+from app.core.exceptions import InvalidTokenError, UsageLimitExceededError, UserNotFoundError, too_many_requests
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -159,3 +159,37 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 CurrentVerifiedUser = Annotated[User, Depends(get_current_verified_user)]
 OptionalUser = Annotated[Optional[User], Depends(get_current_user_optional)]
+
+
+async def check_session_quota(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+        db: AsyncSession = Depends(get_db),
+) -> User:
+    """Check that the user has not exceeded their daily session quota."""
+    from app.subscriptions.service import get_subscription_service
+
+    service = get_subscription_service(db)
+    try:
+        await service.check_session_quota(current_user.id)
+    except UsageLimitExceededError as e:
+        raise too_many_requests(detail=e.message)
+    return current_user
+
+
+async def check_generation_quota(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+        db: AsyncSession = Depends(get_db),
+) -> User:
+    """Check that the user has not exceeded their daily generation quota."""
+    from app.subscriptions.service import get_subscription_service
+
+    service = get_subscription_service(db)
+    try:
+        await service.check_generation_quota(current_user.id)
+    except UsageLimitExceededError as e:
+        raise too_many_requests(detail=e.message)
+    return current_user
+
+
+SessionQuotaUser = Annotated[User, Depends(check_session_quota)]
+GenerationQuotaUser = Annotated[User, Depends(check_generation_quota)]

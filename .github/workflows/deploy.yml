@@ -16,8 +16,26 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -e
             cd /opt/knowit
             git pull origin main
-            docker compose --env-file .env.prod -f docker-compose.prod.yml up --build -d
+
+            # Compute requirements hash to bust Docker cache when deps change
+            REQ_HASH=$(md5sum requirements.txt | cut -d' ' -f1)
+
+            # Build with hash arg — forces pip reinstall when requirements.txt changes
+            docker compose --env-file .env.prod -f docker-compose.prod.yml build \
+              --build-arg REQUIREMENTS_HASH="$REQ_HASH" api
+
+            # Start services
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+
+            # Wait for API to be healthy before running migrations
+            echo "Waiting for API to start..."
+            sleep 5
+
+            # Run migrations
             docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T api alembic upgrade head
+
+            # Clean up old images
             docker image prune -f

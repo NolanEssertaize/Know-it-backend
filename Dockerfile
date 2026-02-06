@@ -19,7 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
+# Copy requirements first (layer caching: only re-runs pip when this file changes)
 COPY requirements.txt .
+# ARG busts the cache when requirements.txt content changes
+ARG REQUIREMENTS_HASH
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code

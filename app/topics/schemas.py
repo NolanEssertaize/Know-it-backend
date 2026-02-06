@@ -39,11 +39,16 @@ class TopicUpdate(BaseModel):
         max_length=200,
         description="New topic title",
     )
+    is_favorite: bool | None = Field(
+        None,
+        description="Mark topic as favorite",
+    )
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "title": "Polymorphisme en Java (avancé)",
+                "is_favorite": True,
             }
         }
     }
@@ -56,6 +61,7 @@ class TopicRead(BaseModel):
     title: str = Field(..., description="Topic title")
     created_at: datetime = Field(..., description="Creation timestamp")
     session_count: int = Field(0, description="Number of sessions")
+    is_favorite: bool = Field(False, description="Whether topic is marked as favorite")
 
     model_config = {"from_attributes": True}
 
@@ -66,6 +72,7 @@ class TopicDetail(BaseModel):
     id: str = Field(..., description="Topic ID")
     title: str = Field(..., description="Topic title")
     created_at: datetime = Field(..., description="Creation timestamp")
+    is_favorite: bool = Field(False, description="Whether topic is marked as favorite")
     sessions: List[SessionRead] = Field(
         default_factory=list,
         description="All sessions for this topic",

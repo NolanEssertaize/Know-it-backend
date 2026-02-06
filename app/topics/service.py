@@ -195,6 +195,7 @@ class TopicService:
             title=topic.title,
             created_at=topic.created_at,
             session_count=session_count,
+            is_favorite=topic.is_favorite,
         )
 
     def _to_detail_dto(self, topic: Topic) -> TopicDetail:
@@ -219,6 +220,7 @@ class TopicService:
             id=topic.id,
             title=topic.title,
             created_at=topic.created_at,
+            is_favorite=topic.is_favorite,
             sessions=sessions,
         )
 

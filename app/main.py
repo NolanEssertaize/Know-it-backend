@@ -18,6 +18,7 @@ from app.auth import auth_router
 from app.transcription import transcription_router
 from app.analysis import analysis_router
 from app.topics import topics_router
+from app.flashcards import decks_router, flashcards_router
 
 # Configure logging
 logging.basicConfig(
@@ -134,3 +135,5 @@ app.include_router(auth_router, prefix=API_V1_PREFIX)
 app.include_router(transcription_router, prefix=API_V1_PREFIX)
 app.include_router(analysis_router, prefix=API_V1_PREFIX)
 app.include_router(topics_router, prefix=API_V1_PREFIX)
+app.include_router(decks_router, prefix=API_V1_PREFIX)
+app.include_router(flashcards_router, prefix=API_V1_PREFIX)

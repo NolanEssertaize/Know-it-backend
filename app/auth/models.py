@@ -14,6 +14,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.topics.models import Topic
+    from app.flashcards.models import Deck, Flashcard
 
 
 class AuthProvider(str, Enum):
@@ -86,6 +87,21 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="Topic.created_at.desc()",
+    )
+
+    # Relationship to decks
+    decks: Mapped[List["Deck"]] = relationship(
+        "Deck",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="Deck.created_at.desc()",
+    )
+
+    # Relationship to flashcards
+    flashcards: Mapped[List["Flashcard"]] = relationship(
+        "Flashcard",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

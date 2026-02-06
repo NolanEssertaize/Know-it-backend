@@ -79,6 +79,21 @@ class SessionNotFoundError(KnowItException):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# FLASHCARD & DECK EXCEPTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class DeckNotFoundError(KnowItException):
+    """Raised when a deck is not found."""
+    pass
+
+
+class FlashcardNotFoundError(KnowItException):
+    """Raised when a flashcard is not found."""
+    pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # EXTERNAL API EXCEPTIONS
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -210,6 +210,8 @@ class TopicRepository:
 
         if topic_data.title is not None:
             topic.title = topic_data.title
+        if topic_data.is_favorite is not None:
+            topic.is_favorite = topic_data.is_favorite
 
         await self.db.flush()
 

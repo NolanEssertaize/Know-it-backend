@@ -9,7 +9,7 @@ Session count is now computed in the repository/service layer using proper async
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -17,6 +17,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.analysis.models import Session
     from app.auth.models import User
+    from app.flashcards.models import Deck
 
 
 class Topic(Base):
@@ -34,6 +35,14 @@ class Topic(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+
+    # Favorite flag - allows users to mark topics as favorites
+    is_favorite: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        index=True,
     )
 
     # Foreign key to User (nullable for backward compatibility)
@@ -59,6 +68,13 @@ class Topic(Base):
         cascade="all, delete-orphan",
         order_by="Session.date.desc()",
         lazy="noload",  # Don't load by default - use selectinload() when needed
+    )
+
+    # Relationship to decks (optional link)
+    decks: Mapped[List["Deck"]] = relationship(
+        "Deck",
+        back_populates="topic",
+        lazy="noload",
     )
 
     def __repr__(self) -> str:

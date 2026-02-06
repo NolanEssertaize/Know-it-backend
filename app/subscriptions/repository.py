@@ -7,7 +7,7 @@ from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid7 import uuid7
+from uuid_extensions import uuid7
 
 from app.subscriptions.models import (
     DailyUsage,

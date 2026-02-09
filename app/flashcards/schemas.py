@@ -273,6 +273,7 @@ class FlashcardDue(BaseModel):
     deck_name: str = Field(..., description="Parent deck name")
     step: int = Field(..., description="Current SRS step")
     review_count: int = Field(..., description="Total reviews so far")
+    next_review_at: datetime = Field(..., description="Next scheduled review time")
 
     model_config = {"from_attributes": True}
 

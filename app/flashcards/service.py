@@ -513,6 +513,7 @@ class FlashcardService:
             deck_name=flashcard.deck.name if flashcard.deck else "Unknown",
             step=flashcard.step,
             review_count=flashcard.review_count,
+            next_review_at=flashcard.next_review_at,
         )
 
 

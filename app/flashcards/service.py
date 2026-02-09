@@ -193,7 +193,7 @@ class FlashcardService:
             verify_ownership=True,
         )
 
-        cards = [{"front": c.front, "back": c.back} for c in bulk_data.cards]
+        cards = [{"front": c.front, "back": c.back, "delay": c.delay} for c in bulk_data.cards]
         flashcards = await self.flashcard_repo.bulk_create(
             deck_id=bulk_data.deck_id,
             cards=cards,

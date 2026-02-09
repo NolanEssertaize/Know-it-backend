@@ -37,6 +37,9 @@ PERIOD_LABELS = [
     "36_months",
 ]
 
+# Delay labels for user-facing step selection (includes "now")
+DELAY_LABELS = ["now"] + PERIOD_LABELS
+
 # Maximum step (0-indexed)
 MAX_STEP = len(INTERVALS_MINUTES) - 1
 
@@ -162,3 +165,39 @@ def get_initial_srs_state() -> Tuple[int, datetime, int]:
         datetime.now(timezone.utc),
         INTERVALS_MINUTES[0],
     )
+
+
+def get_srs_state_for_step(step: int) -> Tuple[int, datetime, int]:
+    """
+    Get SRS state for a specific step.
+
+    Step 0 with next_review_at=NOW means "due now".
+    Steps 0-8 schedule the card at the corresponding interval from now.
+
+    Args:
+        step: The target step (0-8)
+
+    Returns:
+        Tuple of (step, next_review_at, interval_minutes)
+    """
+    clamped_step = max(0, min(step, MAX_STEP))
+    interval = INTERVALS_MINUTES[clamped_step]
+    next_review_at = datetime.now(timezone.utc) + timedelta(minutes=interval)
+    return (clamped_step, next_review_at, interval)
+
+
+def delay_label_to_step(label: str) -> Tuple[int, bool]:
+    """
+    Convert a delay label to a step and whether it's due now.
+
+    Args:
+        label: One of DELAY_LABELS ("now", "1_day", "1_week", etc.)
+
+    Returns:
+        Tuple of (step, is_due_now)
+    """
+    if label == "now":
+        return (0, True)
+    if label in PERIOD_LABELS:
+        return (PERIOD_LABELS.index(label), False)
+    return (0, True)

@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.flashcards.models import Deck, Flashcard
 from app.flashcards.schemas import DeckCreate, DeckUpdate, FlashcardCreate, FlashcardUpdate
-from app.flashcards.srs import SRSUpdate, get_initial_srs_state
+from app.flashcards.srs import SRSUpdate, get_initial_srs_state, get_srs_state_for_step, delay_label_to_step, INTERVALS_MINUTES
 from app.core.exceptions import DeckNotFoundError, FlashcardNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -246,7 +246,11 @@ class FlashcardRepository:
         Returns:
             Created Flashcard entity
         """
-        step, next_review_at, interval_minutes = get_initial_srs_state()
+        if flashcard_data.delay and flashcard_data.delay != "now":
+            target_step, is_due_now = delay_label_to_step(flashcard_data.delay)
+            step, next_review_at, interval_minutes = get_srs_state_for_step(target_step)
+        else:
+            step, next_review_at, interval_minutes = get_initial_srs_state()
 
         flashcard = Flashcard(
             id=str(uuid4()),
@@ -280,17 +284,24 @@ class FlashcardRepository:
 
         Args:
             deck_id: Parent deck ID
-            cards: List of dicts with 'front' and 'back' keys
+            cards: List of dicts with 'front', 'back', and optional 'delay' keys
             user_id: Owner user ID
 
         Returns:
             List of created Flashcard entities
         """
-        step, next_review_at, interval_minutes = get_initial_srs_state()
+        default_step, default_next_review, default_interval = get_initial_srs_state()
         now = datetime.now(timezone.utc)
 
         flashcards = []
         for card in cards:
+            delay = card.get("delay")
+            if delay and delay != "now":
+                target_step, _ = delay_label_to_step(delay)
+                step, next_review_at, interval_minutes = get_srs_state_for_step(target_step)
+            else:
+                step, next_review_at, interval_minutes = default_step, default_next_review, default_interval
+
             flashcard = Flashcard(
                 id=str(uuid4()),
                 front_content=card["front"],
@@ -407,7 +418,7 @@ class FlashcardRepository:
         user_id: str,
     ) -> Flashcard:
         """
-        Update flashcard content (no SRS reset).
+        Update flashcard content and optionally move to a different delay.
 
         Args:
             flashcard_id: Flashcard UUID
@@ -423,6 +434,18 @@ class FlashcardRepository:
             flashcard.front_content = flashcard_data.front_content
         if flashcard_data.back_content is not None:
             flashcard.back_content = flashcard_data.back_content
+
+        if flashcard_data.delay is not None:
+            if flashcard_data.delay == "now":
+                flashcard.step = 0
+                flashcard.next_review_at = datetime.now(timezone.utc)
+                flashcard.interval_minutes = INTERVALS_MINUTES[0]
+            else:
+                target_step, _ = delay_label_to_step(flashcard_data.delay)
+                step, next_review_at, interval_minutes = get_srs_state_for_step(target_step)
+                flashcard.step = step
+                flashcard.next_review_at = next_review_at
+                flashcard.interval_minutes = interval_minutes
 
         flashcard.updated_at = datetime.now(timezone.utc)
         await self.db.flush()

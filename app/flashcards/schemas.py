@@ -6,9 +6,9 @@ DTOs for API input/output validation.
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.flashcards.srs import ReviewRating
+from app.flashcards.srs import DELAY_LABELS, ReviewRating
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -138,6 +138,17 @@ class FlashcardCreate(BaseModel):
         ...,
         description="Parent deck ID",
     )
+    delay: Optional[str] = Field(
+        None,
+        description=f"Initial delay/schedule. One of: {', '.join(DELAY_LABELS)}. Defaults to 'now' if not set.",
+    )
+
+    @field_validator("delay")
+    @classmethod
+    def validate_delay(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in DELAY_LABELS:
+            raise ValueError(f"Invalid delay. Must be one of: {', '.join(DELAY_LABELS)}")
+        return v
 
     model_config = {
         "json_schema_extra": {
@@ -145,6 +156,7 @@ class FlashcardCreate(BaseModel):
                 "front_content": "What is polymorphism in Java?",
                 "back_content": "Polymorphism allows objects of different classes to be treated as objects of a common superclass.",
                 "deck_id": "deck-uuid-here",
+                "delay": "1_month",
             }
         }
     }
@@ -182,10 +194,21 @@ class CardContent(BaseModel):
 
     front: str = Field(..., min_length=1, max_length=5000)
     back: str = Field(..., min_length=1, max_length=5000)
+    delay: Optional[str] = Field(
+        None,
+        description=f"Initial delay/schedule. One of: {', '.join(DELAY_LABELS)}. Defaults to 'now' if not set.",
+    )
+
+    @field_validator("delay")
+    @classmethod
+    def validate_delay(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in DELAY_LABELS:
+            raise ValueError(f"Invalid delay. Must be one of: {', '.join(DELAY_LABELS)}")
+        return v
 
 
 class FlashcardUpdate(BaseModel):
-    """DTO for updating a flashcard (content only, no SRS reset)."""
+    """DTO for updating a flashcard."""
 
     front_content: Optional[str] = Field(
         None,
@@ -199,12 +222,24 @@ class FlashcardUpdate(BaseModel):
         max_length=5000,
         description="New answer/back side content",
     )
+    delay: Optional[str] = Field(
+        None,
+        description=f"Move card to a specific delay. One of: {', '.join(DELAY_LABELS)}.",
+    )
+
+    @field_validator("delay")
+    @classmethod
+    def validate_delay(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in DELAY_LABELS:
+            raise ValueError(f"Invalid delay. Must be one of: {', '.join(DELAY_LABELS)}")
+        return v
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "front_content": "Updated question?",
                 "back_content": "Updated answer.",
+                "delay": "1_month",
             }
         }
     }

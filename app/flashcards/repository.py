@@ -497,12 +497,14 @@ class FlashcardRepository:
     async def get_all_cards(
         self,
         user_id: str,
+        deck_id: Optional[str] = None,
     ) -> Sequence[Flashcard]:
         """
         Get all flashcards for a user for timeline view.
 
         Args:
             user_id: User ID to filter by
+            deck_id: Optional deck ID to filter by
 
         Returns:
             List of Flashcard entities with deck relationship loaded, ordered by next_review_at
@@ -513,6 +515,9 @@ class FlashcardRepository:
             .where(Flashcard.user_id == user_id)
             .order_by(Flashcard.next_review_at.asc())
         )
+
+        if deck_id:
+            stmt = stmt.where(Flashcard.deck_id == deck_id)
 
         result = await self.db.execute(stmt)
         return result.scalars().all()

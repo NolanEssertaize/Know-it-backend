@@ -284,6 +284,48 @@ class FlashcardService:
             total_upcoming=total_upcoming,
         )
 
+    async def get_deck_timeline(self, deck_id: str, user_id: str) -> TimelineResponse:
+        """
+        Get flashcard review timeline for a specific deck, grouped by SRS periods.
+        Same logic as the global timeline but filtered to one deck.
+        """
+        logger.info(f"[FlashcardService] Getting deck timeline: {deck_id} for user: {user_id}")
+
+        # Verify deck exists and belongs to user
+        await self.deck_repo.get_by_id(deck_id, user_id=user_id, verify_ownership=True)
+
+        now = datetime.now(timezone.utc)
+
+        flashcards = await self.flashcard_repo.get_all_cards(user_id=user_id, deck_id=deck_id)
+
+        period_cards: dict[str, list[FlashcardDue]] = {label: [] for label in PERIOD_LABELS}
+        due_cards: list[FlashcardDue] = []
+
+        for f in flashcards:
+            dto = self._flashcard_to_due_dto(f)
+            if f.next_review_at <= now:
+                due_cards.append(dto)
+            else:
+                period_label = PERIOD_LABELS[f.step] if f.step < len(PERIOD_LABELS) else PERIOD_LABELS[-1]
+                period_cards[period_label].append(dto)
+
+        periods = []
+        if due_cards:
+            periods.append(TimelinePeriod(period="due", count=len(due_cards), cards=due_cards))
+
+        for label in PERIOD_LABELS:
+            cards = period_cards[label]
+            if cards:
+                periods.append(TimelinePeriod(period=label, count=len(cards), cards=cards))
+
+        total_upcoming = sum(len(cards) for cards in period_cards.values())
+
+        return TimelineResponse(
+            periods=periods,
+            total_due=len(due_cards),
+            total_upcoming=total_upcoming,
+        )
+
     async def review_flashcard(
         self,
         flashcard_id: str,

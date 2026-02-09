@@ -22,6 +22,7 @@ from app.flashcards.schemas import (
     DeckUpdate,
     DueCardsResponse,
     FlashcardBulkCreate,
+    FlashcardCreate,
     FlashcardError,
     FlashcardRead,
     FlashcardUpdate,
@@ -212,6 +213,44 @@ async def delete_deck(
         )
 
 
+@decks_router.get(
+    "/{deck_id}/timeline",
+    response_model=TimelineResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get deck review timeline",
+    description="Get flashcards grouped by review periods for a specific deck.",
+    responses={
+        200: {"model": TimelineResponse, "description": "Timeline with grouped cards"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Access denied"},
+        404: {"model": FlashcardError, "description": "Deck not found"},
+    },
+)
+async def get_deck_timeline(
+    deck_id: str,
+    current_user: CurrentActiveUser,
+    db: AsyncSession = Depends(get_db),
+) -> TimelineResponse:
+    """Get flashcard review timeline for a specific deck."""
+    logger.info(f"[DecksRouter] Getting timeline for deck: {deck_id}, user: {current_user.id}")
+
+    try:
+        service = get_flashcard_service(db)
+        return await service.get_deck_timeline(deck_id, user_id=current_user.id)
+    except DeckNotFoundError as e:
+        logger.warning(f"[DecksRouter] Deck not found: {deck_id}")
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": e.message, "code": "DECK_NOT_FOUND"},
+        )
+    except PermissionError:
+        logger.warning(f"[DecksRouter] Access denied to deck {deck_id} for user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied - deck does not belong to user",
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FLASHCARD ROUTER
 # ═══════════════════════════════════════════════════════════════════════════
@@ -291,6 +330,44 @@ async def bulk_create_flashcards(
         )
     except PermissionError:
         logger.warning(f"[FlashcardsRouter] Access denied to deck {bulk_data.deck_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied - deck does not belong to user",
+        )
+
+
+@flashcards_router.post(
+    "",
+    response_model=FlashcardRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a single flashcard",
+    description="Create a single flashcard in a deck owned by the authenticated user.",
+    responses={
+        201: {"model": FlashcardRead, "description": "Flashcard created"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Access denied to deck"},
+        404: {"model": FlashcardError, "description": "Deck not found"},
+    },
+)
+async def create_flashcard(
+    flashcard_data: FlashcardCreate,
+    current_user: CurrentActiveUser,
+    db: AsyncSession = Depends(get_db),
+) -> FlashcardRead:
+    """Create a single flashcard."""
+    logger.info(f"[FlashcardsRouter] Creating flashcard in deck: {flashcard_data.deck_id}, user: {current_user.id}")
+
+    try:
+        service = get_flashcard_service(db)
+        return await service.create_flashcard(flashcard_data, user_id=current_user.id)
+    except DeckNotFoundError as e:
+        logger.warning(f"[FlashcardsRouter] Deck not found: {flashcard_data.deck_id}")
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": e.message, "code": "DECK_NOT_FOUND"},
+        )
+    except PermissionError:
+        logger.warning(f"[FlashcardsRouter] Access denied to deck {flashcard_data.deck_id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied - deck does not belong to user",

@@ -54,6 +54,8 @@ services:
       - CORS_ORIGINS=*
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-prod}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
     ports:
       - "8000:8000"
     depends_on:
@@ -66,6 +68,22 @@ services:
       - ./alembic.ini:/app/alembic.ini:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
+    develop:
+      watch:
+        # Sync source code changes (triggers uvicorn reload)
+        - action: sync
+          path: ./app
+          target: /app/app
+        # Sync alembic migrations
+        - action: sync
+          path: ./alembic
+          target: /app/alembic
+        # Rebuild container when dependencies change
+        - action: rebuild
+          path: ./requirements.txt
+        # Rebuild container when Dockerfile changes
+        - action: rebuild
+          path: ./Dockerfile
 
 volumes:
   postgres_data:

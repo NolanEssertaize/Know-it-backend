@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     jwt_access_expire_minutes: int = 30
     jwt_refresh_expire_days: int = 7
 
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # Apple App Store
     apple_bundle_id: str = ""
     apple_issuer_id: str = ""

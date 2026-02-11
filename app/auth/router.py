@@ -3,14 +3,17 @@ Authentication router - API endpoints for user authentication.
 Supports local (email/password) and Google OAuth authentication.
 """
 
+import json
 import logging
+import re
+from urllib.parse import urlencode, quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import JSONResponse
 
 from app.rate_limit import limiter
+from app.config import get_settings
 
 from app.dependencies import CurrentUser, CurrentActiveUser
 from app.auth.schemas import (
@@ -123,6 +126,269 @@ async def login(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"error": str(e), "code": "AUTH_FAILED"},
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GOOGLE OAUTH
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/google",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate with Google (web flow)",
+    description="Exchange a Google authorization code for user authentication.",
+    responses={
+        200: {"model": AuthResponse, "description": "Authentication successful"},
+        401: {"model": AuthError, "description": "OAuth authentication failed"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("10/minute")
+async def google_auth(
+        request: Request,
+        auth_data: GoogleAuthRequest,
+        db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    """
+    Authenticate via Google OAuth web flow.
+
+    Accepts an authorization code and redirect_uri, exchanges them
+    for user info, then creates or links the user account.
+    """
+    logger.info("[AuthRouter] Google OAuth web flow request")
+
+    try:
+        from app.auth.oauth import GoogleOAuth
+
+        google_oauth = GoogleOAuth()
+        oauth_info = await google_oauth.authenticate(
+            code=auth_data.code,
+            redirect_uri=auth_data.redirect_uri,
+        )
+
+        auth_service = get_auth_service(db)
+        return await auth_service.authenticate_oauth(oauth_info)
+
+    except OAuthError as e:
+        logger.warning(f"[AuthRouter] Google OAuth failed: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": str(e), "code": "OAUTH_ERROR"},
+        )
+
+
+@router.post(
+    "/google/token",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate with Google ID token (mobile flow)",
+    description="Verify a Google ID token from mobile Sign-In (Expo) for user authentication.",
+    responses={
+        200: {"model": AuthResponse, "description": "Authentication successful"},
+        401: {"model": AuthError, "description": "OAuth authentication failed"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("10/minute")
+async def google_token_auth(
+        request: Request,
+        token_data: GoogleTokenRequest,
+        db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    """
+    Authenticate via Google ID token (mobile/Expo flow).
+
+    Accepts a Google ID token from the mobile app, verifies it,
+    then creates or links the user account.
+    """
+    logger.info("[AuthRouter] Google OAuth token flow request")
+
+    try:
+        from app.auth.oauth import GoogleOAuth
+
+        google_oauth = GoogleOAuth()
+        oauth_info = await google_oauth.authenticate(
+            id_token_str=token_data.id_token,
+        )
+
+        auth_service = get_auth_service(db)
+        return await auth_service.authenticate_oauth(oauth_info)
+
+    except OAuthError as e:
+        logger.warning(f"[AuthRouter] Google token auth failed: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": str(e), "code": "OAUTH_ERROR"},
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GOOGLE OAUTH - MOBILE SERVER-SIDE FLOW
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Allowed redirect URI schemes for mobile apps
+_ALLOWED_SCHEMES = re.compile(r"^(exp|knowit|https)://")
+
+
+def _validate_redirect_uri(redirect_uri: str) -> bool:
+    """Validate that redirect_uri uses a safe scheme."""
+    return bool(_ALLOWED_SCHEMES.match(redirect_uri))
+
+
+@router.get(
+    "/google/mobile",
+    summary="Start Google OAuth for mobile",
+    description="Redirects to Google consent screen. Mobile app opens this in an in-app browser.",
+    responses={
+        302: {"description": "Redirect to Google OAuth consent screen"},
+        400: {"description": "Invalid redirect_uri"},
+    },
+)
+@limiter.limit("10/minute")
+async def google_mobile_start(
+        request: Request,
+        redirect_uri: str = Query(
+            ...,
+            description="Deep link URL to redirect back to after auth (e.g. exp://192.168.1.236:8081/--/auth)",
+        ),
+):
+    """
+    Start the Google OAuth server-side flow for mobile apps.
+
+    The mobile app opens this URL in an in-app browser. The backend
+    redirects to Google's consent screen, handles the callback,
+    then redirects back to the app's deep link with tokens.
+    """
+    if not _validate_redirect_uri(redirect_uri):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Invalid redirect_uri scheme. Allowed: exp://, knowit://, https://"},
+        )
+
+    settings = get_settings()
+
+    if not settings.google_client_id:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": "Google OAuth not configured"},
+        )
+
+    # Build the callback URL using the current request's base URL
+    callback_url = str(request.base_url).rstrip("/") + "/api/v1/auth/google/mobile/callback"
+
+    # Build Google OAuth authorization URL
+    google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
+        "client_id": settings.google_client_id,
+        "redirect_uri": callback_url,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "state": redirect_uri,
+    })
+
+    logger.info(f"[AuthRouter] Google mobile OAuth started, callback: {callback_url}")
+
+    return RedirectResponse(url=google_auth_url, status_code=302)
+
+
+@router.get(
+    "/google/mobile/callback",
+    summary="Google OAuth callback for mobile",
+    description="Handles Google's OAuth callback, exchanges code for tokens, and redirects to the mobile app.",
+    responses={
+        302: {"description": "Redirect to mobile app with tokens"},
+    },
+)
+async def google_mobile_callback(
+        request: Request,
+        code: str = Query(None, description="Authorization code from Google"),
+        state: str = Query(None, description="Mobile app redirect_uri"),
+        error: str = Query(None, description="Error from Google"),
+        db: AsyncSession = Depends(get_db),
+):
+    """
+    Handle Google OAuth callback for mobile flow.
+
+    Exchanges the authorization code for user info, creates/finds the user,
+    generates JWT tokens, and redirects to the mobile app's deep link.
+    """
+    # If Google returned an error
+    if error:
+        logger.warning(f"[AuthRouter] Google OAuth error: {error}")
+        if state and _validate_redirect_uri(state):
+            return RedirectResponse(
+                url=f"{state}?error={quote(error)}",
+                status_code=302,
+            )
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": f"Google OAuth error: {error}"},
+        )
+
+    # Validate required params
+    if not code or not state:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Missing code or state parameter"},
+        )
+
+    redirect_uri = state
+
+    if not _validate_redirect_uri(redirect_uri):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Invalid redirect_uri in state"},
+        )
+
+    try:
+        from app.auth.oauth import GoogleOAuth
+
+        google_oauth = GoogleOAuth()
+
+        # Build the same callback URL used in the initial redirect
+        callback_url = str(request.base_url).rstrip("/") + "/api/v1/auth/google/mobile/callback"
+
+        # Exchange code for user info
+        oauth_info = await google_oauth.authenticate(
+            code=code,
+            redirect_uri=callback_url,
+        )
+
+        # Create or find user
+        auth_service = get_auth_service(db)
+        auth_response = await auth_service.authenticate_oauth(oauth_info)
+
+        # Serialize user data
+        user_data = auth_response.user.model_dump(mode="json")
+
+        # Redirect to mobile app with tokens
+        params = urlencode({
+            "access_token": auth_response.tokens.access_token,
+            "refresh_token": auth_response.tokens.refresh_token,
+            "user": json.dumps(user_data),
+        })
+
+        logger.info(f"[AuthRouter] Google mobile OAuth success for: {auth_response.user.email}")
+
+        return RedirectResponse(
+            url=f"{redirect_uri}?{params}",
+            status_code=302,
+        )
+
+    except OAuthError as e:
+        logger.warning(f"[AuthRouter] Google mobile OAuth failed: {e}")
+        return RedirectResponse(
+            url=f"{redirect_uri}?error={quote(str(e))}",
+            status_code=302,
+        )
+    except Exception as e:
+        logger.exception(f"[AuthRouter] Google mobile OAuth unexpected error: {e}")
+        return RedirectResponse(
+            url=f"{redirect_uri}?error={quote('Authentication failed')}",
+            status_code=302,
         )
 
 

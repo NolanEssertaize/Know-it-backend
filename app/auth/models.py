@@ -46,7 +46,7 @@ class User(Base):
 
     # Profile info
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    picture_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    picture_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
 
     # OAuth fields
     auth_provider: Mapped[AuthProvider] = mapped_column(

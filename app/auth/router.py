@@ -276,8 +276,9 @@ async def google_mobile_start(
             content={"error": "Google OAuth not configured"},
         )
 
-    # Build the callback URL using the current request's base URL
-    callback_url = str(request.base_url).rstrip("/") + "/api/v1/auth/google/mobile/callback"
+    # Build the callback URL using configured base URL or request's base URL
+    base_url = settings.google_oauth_callback_base_url or str(request.base_url).rstrip("/")
+    callback_url = base_url + "/api/v1/auth/google/mobile/callback"
 
     # Build Google OAuth authorization URL
     google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
@@ -349,7 +350,9 @@ async def google_mobile_callback(
         google_oauth = GoogleOAuth()
 
         # Build the same callback URL used in the initial redirect
-        callback_url = str(request.base_url).rstrip("/") + "/api/v1/auth/google/mobile/callback"
+        settings = get_settings()
+        base_url = settings.google_oauth_callback_base_url or str(request.base_url).rstrip("/")
+        callback_url = base_url + "/api/v1/auth/google/mobile/callback"
 
         # Exchange code for user info
         oauth_info = await google_oauth.authenticate(

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Google OAuth
     google_client_id: str = ""
     google_client_secret: str = ""
+    google_oauth_callback_base_url: str = ""  # e.g. https://essertaize.com
 
     # Apple App Store
     apple_bundle_id: str = ""

@@ -19,16 +19,20 @@ from app.dependencies import CurrentUser, CurrentActiveUser
 from app.auth.schemas import (
     AuthError,
     AuthResponse,
+    ForgotPasswordRequest,
     GoogleAuthRequest,
     GoogleTokenRequest,
     MessageResponse,
     PasswordChange,
+    ResetPasswordRequest,
+    ResetTokenResponse,
     Token,
     TokenRefresh,
     UserCreate,
     UserLogin,
     UserRead,
     UserUpdate,
+    VerifyResetCodeRequest,
 )
 from app.auth.service import AuthService, get_auth_service
 from app.core.exceptions import (
@@ -126,6 +130,129 @@ async def login(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"error": str(e), "code": "AUTH_FAILED"},
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PASSWORD RESET
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request a password reset code",
+    description="Sends a 6-digit code to the user's email. Always returns 200 to prevent enumeration.",
+    responses={
+        200: {"model": MessageResponse, "description": "Request processed"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("3/hour")
+async def forgot_password(
+        request: Request,
+        body: ForgotPasswordRequest,
+        db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """
+    Request a password reset code.
+
+    A 6-digit code is sent to the email if it belongs to a local auth user.
+    Always returns success to prevent email enumeration.
+    """
+    logger.info("[AuthRouter] Forgot password request")
+
+    try:
+        auth_service = get_auth_service(db)
+        await auth_service.initiate_password_reset(body.email)
+    except Exception:
+        # Swallow all errors to prevent enumeration
+        logger.exception("[AuthRouter] Error during password reset initiation")
+
+    return MessageResponse(
+        message="If an account exists with that email, a reset code has been sent."
+    )
+
+
+@router.post(
+    "/verify-reset-code",
+    response_model=ResetTokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify a password reset code",
+    description="Verifies the 6-digit code and returns a short-lived reset token.",
+    responses={
+        200: {"model": ResetTokenResponse, "description": "Code verified"},
+        401: {"model": AuthError, "description": "Invalid or expired code"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("5/minute")
+async def verify_reset_code(
+        request: Request,
+        body: VerifyResetCodeRequest,
+        db: AsyncSession = Depends(get_db),
+) -> ResetTokenResponse:
+    """
+    Verify a password reset code.
+
+    Returns a short-lived JWT (10 min) that can be used to set a new password.
+    """
+    logger.info("[AuthRouter] Verify reset code request")
+
+    try:
+        auth_service = get_auth_service(db)
+        return await auth_service.verify_reset_code(body.email, body.code)
+
+    except AuthenticationError as e:
+        logger.warning(f"[AuthRouter] Reset code verification failed: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": str(e), "code": "INVALID_RESET_CODE"},
+        )
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset password with token",
+    description="Sets a new password using the reset token from verify-reset-code.",
+    responses={
+        200: {"model": MessageResponse, "description": "Password reset successful"},
+        401: {"model": AuthError, "description": "Invalid or expired reset token"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("5/minute")
+async def reset_password(
+        request: Request,
+        body: ResetPasswordRequest,
+        db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """
+    Reset password using a reset token.
+
+    The reset_token is obtained from the verify-reset-code endpoint.
+    """
+    logger.info("[AuthRouter] Reset password request")
+
+    try:
+        auth_service = get_auth_service(db)
+        await auth_service.reset_password_with_token(body.reset_token, body.new_password)
+        return MessageResponse(message="Password has been reset successfully.")
+
+    except InvalidTokenError as e:
+        logger.warning(f"[AuthRouter] Reset password failed: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": str(e), "code": "INVALID_RESET_TOKEN"},
+        )
+    except UserNotFoundError as e:
+        logger.warning(f"[AuthRouter] Reset password - user not found: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Invalid reset token", "code": "INVALID_RESET_TOKEN"},
         )
 
 

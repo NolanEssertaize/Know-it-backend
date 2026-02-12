@@ -156,3 +156,53 @@ class AuthError(BaseModel):
     """Schema for authentication errors."""
     error: str
     code: str
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PASSWORD RESET SCHEMAS
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Schema for requesting a password reset code."""
+    email: EmailStr
+
+
+class VerifyResetCodeRequest(BaseModel):
+    """Schema for verifying a password reset code."""
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        """Validate that code is exactly 6 digits."""
+        if not v.isdigit():
+            raise ValueError("Code must contain only digits")
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    """Schema for setting a new password after code verification."""
+    reset_token: str
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        """Validate new password strength."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+
+class ResetTokenResponse(BaseModel):
+    """Schema for the reset token returned after code verification."""
+    reset_token: str
+    expires_in: int  # seconds

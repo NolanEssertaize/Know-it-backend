@@ -11,7 +11,7 @@ from uuid import uuid4
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import AuthProvider, User
+from app.auth.models import AuthProvider, PasswordResetCode, User
 from app.auth.schemas import OAuthUserInfo, UserCreate
 
 logger = logging.getLogger(__name__)
@@ -267,3 +267,84 @@ class UserRepository:
         """
         user = await self.get_by_email(email)
         return user is not None
+
+
+class PasswordResetRepository:
+    """Repository for password reset code operations."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def create_reset_code(
+        self,
+        user_id: str,
+        email: str,
+        code: str,
+        expires_at: datetime,
+    ) -> PasswordResetCode:
+        """Create a new password reset code."""
+        reset_code = PasswordResetCode(
+            id=str(uuid4()),
+            user_id=user_id,
+            email=email.lower(),
+            code=code,
+            expires_at=expires_at,
+        )
+        self.db.add(reset_code)
+        await self.db.flush()
+        logger.info(f"[PasswordResetRepository] Created reset code for user: {user_id}")
+        return reset_code
+
+    async def get_active_code_by_email(self, email: str) -> Optional[PasswordResetCode]:
+        """Get the latest active (non-used, non-expired) code for an email."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(PasswordResetCode)
+            .where(
+                PasswordResetCode.email == email.lower(),
+                PasswordResetCode.is_used == False,  # noqa: E712
+                PasswordResetCode.expires_at > now,
+            )
+            .order_by(PasswordResetCode.created_at.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def increment_attempts(self, code_id: str) -> None:
+        """Increment the attempt counter for a reset code."""
+        stmt = (
+            update(PasswordResetCode)
+            .where(PasswordResetCode.id == code_id)
+            .values(attempts=PasswordResetCode.attempts + 1)
+        )
+        await self.db.execute(stmt)
+        await self.db.flush()
+
+    async def mark_as_used(self, code_id: str) -> None:
+        """Mark a reset code as used."""
+        stmt = (
+            update(PasswordResetCode)
+            .where(PasswordResetCode.id == code_id)
+            .values(
+                is_used=True,
+                used_at=datetime.now(timezone.utc),
+            )
+        )
+        await self.db.execute(stmt)
+        await self.db.flush()
+
+    async def invalidate_all_for_user(self, user_id: str) -> None:
+        """Invalidate all active reset codes for a user."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(PasswordResetCode)
+            .where(
+                PasswordResetCode.user_id == user_id,
+                PasswordResetCode.is_used == False,  # noqa: E712
+            )
+            .values(is_used=True, used_at=now)
+        )
+        await self.db.execute(stmt)
+        await self.db.flush()
+        logger.info(f"[PasswordResetRepository] Invalidated all codes for user: {user_id}")

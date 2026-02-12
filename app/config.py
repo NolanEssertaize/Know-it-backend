@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     google_play_package_name: str = ""
     google_service_account_json: str = ""
 
+    # Resend (email)
+    resend_api_key: str = ""
+    resend_from_email: str = "knowit-support@essertaize.com"
+
     # Rate Limiting
     rate_limit_default: str = "60/minute"
     rate_limit_auth: str = "10/minute"

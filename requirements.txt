@@ -38,6 +38,10 @@ PyJWT[crypto]==2.9.0
 # Rate Limiting
 slowapi==0.1.9
 
+# Scheduling
+apscheduler==3.10.4
+
 # Utils
 python-dotenv==1.0.1
 uuid7==0.1.0
+tzdata==2024.2

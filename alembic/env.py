@@ -38,6 +38,7 @@ load_model_file("app.auth.models", app_dir / "auth" / "models.py")
 load_model_file("app.topics.models", app_dir / "topics" / "models.py")
 load_model_file("app.analysis.models", app_dir / "analysis" / "models.py")
 load_model_file("app.flashcards.models", app_dir / "flashcards" / "models.py")
+load_model_file("app.notifications.models", app_dir / "notifications" / "models.py")
 
 # Alembic Config object
 config = context.config

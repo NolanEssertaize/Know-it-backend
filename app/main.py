@@ -23,6 +23,7 @@ from app.analysis import analysis_router
 from app.topics import topics_router
 from app.flashcards import decks_router, flashcards_router
 from app.subscriptions import subscriptions_router
+from app.notifications import notifications_router
 
 # Configure logging
 logging.basicConfig(
@@ -52,9 +53,41 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Startup] Database initialization failed: {e}")
         # Don't fail startup - tables might already exist
 
+    # Start notification scheduler
+    scheduler = None
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from app.notifications.scheduler import (
+            run_evening_practice_reminder,
+            run_morning_flashcard_reminder,
+        )
+
+        scheduler = AsyncIOScheduler()
+        # Run every 15 minutes to cover all timezone offsets
+        scheduler.add_job(
+            run_evening_practice_reminder,
+            CronTrigger(minute="0,15,30,45"),
+            id="evening_practice_reminder",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            run_morning_flashcard_reminder,
+            CronTrigger(minute="0,15,30,45"),
+            id="morning_flashcard_reminder",
+            replace_existing=True,
+        )
+        scheduler.start()
+        logger.info("[Startup] Notification scheduler started")
+    except Exception as e:
+        logger.error(f"[Startup] Notification scheduler failed to start: {e}")
+
     yield
 
     # Shutdown
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        logger.info("[Shutdown] Notification scheduler stopped")
     logger.info("[Shutdown] Application shutting down...")
 
 
@@ -146,3 +179,4 @@ app.include_router(topics_router, prefix=API_V1_PREFIX)
 app.include_router(decks_router, prefix=API_V1_PREFIX)
 app.include_router(flashcards_router, prefix=API_V1_PREFIX)
 app.include_router(subscriptions_router, prefix=API_V1_PREFIX)
+app.include_router(notifications_router, prefix=API_V1_PREFIX)

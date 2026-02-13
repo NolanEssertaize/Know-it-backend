@@ -255,6 +255,21 @@ class UserRepository:
         await self.db.flush()
         logger.info(f"[UserRepository] Deactivated user: {user_id}")
 
+    async def delete(self, user_id: str) -> None:
+        """
+        Permanently delete a user and all associated data.
+        Cascade deletes handle topics, sessions, decks, flashcards,
+        subscriptions, push tokens, notification settings, and logs.
+
+        Args:
+            user_id: User UUID
+        """
+        user = await self.get_by_id(user_id)
+        if user:
+            await self.db.delete(user)
+            await self.db.flush()
+            logger.info(f"[UserRepository] Deleted user: {user_id}")
+
     async def email_exists(self, email: str) -> bool:
         """
         Check if email already exists.

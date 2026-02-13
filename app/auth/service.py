@@ -511,6 +511,197 @@ class AuthService:
         logger.info(f"[AuthService] Password reset completed for user: {user.id}")
 
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # GDPR / CGU - DATA EXPORT & DELETION
+    # ═══════════════════════════════════════════════════════════════════════
+
+    async def export_user_data(self, user_id: str) -> dict:
+        """
+        Collect all user data for GDPR data portability.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Dictionary containing all user data
+
+        Raises:
+            UserNotFoundError: If user not found
+        """
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.auth.models import User
+        from app.topics.models import Topic
+        from app.analysis.models import Session
+        from app.flashcards.models import Deck, Flashcard
+        from app.subscriptions.models import UserSubscription, DailyUsage
+        from app.notifications.models import (
+            UserPushToken,
+            UserNotificationSettings,
+            NotificationLog,
+        )
+
+        user = await self.repository.get_by_id(user_id)
+        if not user:
+            raise UserNotFoundError("User not found")
+
+        # Fetch all related data
+        topics_result = await self.db.execute(
+            select(Topic).where(Topic.user_id == user_id)
+        )
+        topics = topics_result.scalars().all()
+
+        topic_ids = [t.id for t in topics]
+        sessions = []
+        if topic_ids:
+            sessions_result = await self.db.execute(
+                select(Session).where(Session.topic_id.in_(topic_ids))
+            )
+            sessions = sessions_result.scalars().all()
+
+        decks_result = await self.db.execute(
+            select(Deck).where(Deck.user_id == user_id)
+        )
+        decks = decks_result.scalars().all()
+
+        flashcards_result = await self.db.execute(
+            select(Flashcard).where(Flashcard.user_id == user_id)
+        )
+        flashcards = flashcards_result.scalars().all()
+
+        sub_result = await self.db.execute(
+            select(UserSubscription).where(UserSubscription.user_id == user_id)
+        )
+        subscription = sub_result.scalar_one_or_none()
+
+        usage_result = await self.db.execute(
+            select(DailyUsage).where(DailyUsage.user_id == user_id)
+        )
+        usage_logs = usage_result.scalars().all()
+
+        tokens_result = await self.db.execute(
+            select(UserPushToken).where(UserPushToken.user_id == user_id)
+        )
+        push_tokens = tokens_result.scalars().all()
+
+        notif_settings_result = await self.db.execute(
+            select(UserNotificationSettings).where(
+                UserNotificationSettings.user_id == user_id
+            )
+        )
+        notif_settings = notif_settings_result.scalar_one_or_none()
+
+        def _dt(dt: Optional[datetime]) -> Optional[str]:
+            return dt.isoformat() if dt else None
+
+        return {
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "picture_url": user.picture_url,
+                "auth_provider": user.auth_provider.value,
+                "is_active": user.is_active,
+                "is_verified": user.is_verified,
+                "created_at": _dt(user.created_at),
+                "updated_at": _dt(user.updated_at),
+                "last_login": _dt(user.last_login),
+            },
+            "topics": [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "is_favorite": t.is_favorite,
+                    "created_at": _dt(t.created_at),
+                }
+                for t in topics
+            ],
+            "sessions": [
+                {
+                    "id": s.id,
+                    "topic_id": s.topic_id,
+                    "date": _dt(s.date),
+                    "transcription": s.transcription,
+                    "analysis_data": s.analysis_data,
+                }
+                for s in sessions
+            ],
+            "decks": [
+                {
+                    "id": d.id,
+                    "name": d.name,
+                    "description": d.description,
+                    "topic_id": d.topic_id,
+                    "created_at": _dt(d.created_at),
+                }
+                for d in decks
+            ],
+            "flashcards": [
+                {
+                    "id": f.id,
+                    "deck_id": f.deck_id,
+                    "front_content": f.front_content,
+                    "back_content": f.back_content,
+                    "step": f.step,
+                    "interval_minutes": f.interval_minutes,
+                    "ease_factor": f.ease_factor,
+                    "review_count": f.review_count,
+                    "next_review_at": _dt(f.next_review_at),
+                    "last_reviewed_at": _dt(f.last_reviewed_at),
+                    "created_at": _dt(f.created_at),
+                }
+                for f in flashcards
+            ],
+            "subscription": (
+                {
+                    "plan_type": subscription.plan_type.value,
+                    "status": subscription.status.value,
+                    "expires_at": _dt(subscription.expires_at),
+                    "purchased_at": _dt(subscription.purchased_at),
+                    "created_at": _dt(subscription.created_at),
+                }
+                if subscription
+                else None
+            ),
+            "daily_usage": [
+                {
+                    "date": u.usage_date.isoformat(),
+                    "sessions_used": u.sessions_used,
+                    "generations_used": u.generations_used,
+                }
+                for u in usage_logs
+            ],
+            "notification_settings": (
+                {
+                    "timezone": notif_settings.timezone,
+                    "evening_reminder_enabled": notif_settings.evening_reminder_enabled,
+                    "morning_flashcard_enabled": notif_settings.morning_flashcard_enabled,
+                }
+                if notif_settings
+                else None
+            ),
+        }
+
+    async def delete_account(self, user_id: str) -> None:
+        """
+        Permanently delete a user account and all associated data.
+
+        Args:
+            user_id: User UUID
+
+        Raises:
+            UserNotFoundError: If user not found
+        """
+        user = await self.repository.get_by_id(user_id)
+        if not user:
+            raise UserNotFoundError("User not found")
+
+        await self.repository.delete(user_id)
+        logger.info(f"[AuthService] Account deleted for user: {user_id}")
+
+
 def get_auth_service(db: AsyncSession) -> AuthService:
     """Factory function for AuthService."""
     return AuthService(db)

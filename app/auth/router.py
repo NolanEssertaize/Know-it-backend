@@ -653,6 +653,95 @@ async def change_password(
         )
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# GDPR / CGU - DATA EXPORT & DELETION
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/me/export-data",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Export user data (GDPR)",
+    description="Collect all user data and send it as a JSON attachment by email.",
+    responses={
+        200: {"model": MessageResponse, "description": "Data export email sent"},
+        401: {"model": AuthError, "description": "Not authenticated"},
+        500: {"model": AuthError, "description": "Failed to send email"},
+    },
+)
+@limiter.limit("3/hour")
+async def export_user_data(
+        request: Request,
+        current_user: CurrentActiveUser,
+        db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """
+    Export all user data (GDPR right of access / data portability).
+
+    Collects all data associated with the user's account and sends it
+    as a JSON file attached to an email.
+    """
+    logger.info(f"[AuthRouter] Data export request: {current_user.id}")
+
+    auth_service = get_auth_service(db)
+    user_data = await auth_service.export_user_data(current_user.id)
+
+    from app.email_service import EmailService
+
+    email_service = EmailService()
+    sent = await email_service.send_data_export(
+        to_email=current_user.email,
+        user_data=user_data,
+        user_name=current_user.full_name,
+    )
+
+    if not sent:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "Failed to send data export email. Please try again later.",
+                "code": "EMAIL_SEND_FAILED",
+            },
+        )
+
+    return MessageResponse(
+        message="Your data export has been sent to your email address."
+    )
+
+
+@router.delete(
+    "/me",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete user account (GDPR)",
+    description="Permanently delete the user account and all associated data.",
+    responses={
+        200: {"model": MessageResponse, "description": "Account deleted"},
+        401: {"model": AuthError, "description": "Not authenticated"},
+    },
+)
+async def delete_account(
+        current_user: CurrentActiveUser,
+        db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """
+    Delete user account and all associated data (GDPR right to erasure).
+
+    This action is irreversible. All topics, sessions, flashcards, decks,
+    subscription data, and notification settings will be permanently deleted.
+    """
+    logger.info(f"[AuthRouter] Account deletion request: {current_user.id}")
+
+    auth_service = get_auth_service(db)
+    await auth_service.delete_account(current_user.id)
+
+    logger.info(f"[AuthRouter] Account deleted: {current_user.id}")
+    return MessageResponse(
+        message="Your account and all associated data have been permanently deleted."
+    )
+
+
 @router.post(
     "/logout",
     response_model=MessageResponse,
